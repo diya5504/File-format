@@ -1,0 +1,180 @@
+Your pipeline is a **basic Jenkins declarative pipeline**. A **complete production-ready Jenkins pipeline** usually includes:
+
+* Environment variables
+* Git checkout with credentials
+* Docker login
+* Build Docker image
+* Push to Docker registry
+* Deploy to Kubernetes
+* Post actions (cleanup / notifications)
+
+Below is a **complete Jenkinsfile**.
+
+---
+
+# Complete Jenkins Pipeline (Jenkinsfile)
+
+```groovy
+pipeline {
+
+    agent any
+
+    environment {
+        DOCKER_IMAGE = "myrepo/myapp"
+        DOCKER_TAG = "latest"
+        DOCKER_CREDENTIALS = "dockerhub-credentials"
+        KUBECONFIG_CREDENTIAL = "kubeconfig"
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main',
+                url: 'https://github.com/user/repo.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+                }
+            }
+        }
+
+        stage('Login to DockerHub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: "${DOCKER_CREDENTIALS}",
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    sh "docker push ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                withCredentials([file(credentialsId: "${KUBECONFIG_CREDENTIAL}", variable: 'KUBECONFIG')]) {
+                    sh 'kubectl apply -f deployment.yaml'
+                    sh 'kubectl apply -f service.yaml'
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh 'kubectl get pods'
+                sh 'kubectl get svc'
+            }
+        }
+    }
+
+    post {
+
+        success {
+            echo "Pipeline executed successfully 🎉"
+        }
+
+        failure {
+            echo "Pipeline failed ❌"
+        }
+
+        always {
+            sh 'docker system prune -f'
+        }
+    }
+}
+```
+
+---
+
+# Example Kubernetes Deployment (deployment.yaml)
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: node-app
+  template:
+    metadata:
+      labels:
+        app: node-app
+    spec:
+      containers:
+      - name: node-app
+        image: myrepo/myapp:latest
+        ports:
+        - containerPort: 3000
+```
+
+---
+
+# Kubernetes Service (service.yaml)
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-service
+spec:
+  selector:
+    app: node-app
+  ports:
+    - port: 80
+      targetPort: 3000
+  type: NodePort
+```
+
+---
+
+# CI/CD Flow
+
+```
+Developer Push Code
+        │
+        ▼
+     GitHub
+        │
+        ▼
+     Jenkins Pipeline
+        │
+        ├── Checkout Code
+        ├── Build Docker Image
+        ├── Push to DockerHub
+        └── Deploy to Kubernetes
+        │
+        ▼
+     Kubernetes Cluster
+        │
+        ▼
+     Running Application
+```
+
+---
+
+✅ This pipeline demonstrates a **full DevOps CI/CD workflow using**:
+
+* Jenkins
+* Docker
+* Docker Hub
+* Kubernetes
+
+---
+
+💡 If you want, I can also show you **a real-world DevOps CI/CD pipeline used in companies (Jenkins + SonarQube + Trivy + Docker + Kubernetes + Helm)** which is **commonly asked in DevOps interviews**.
