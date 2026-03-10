@@ -1,0 +1,272 @@
+To properly set up **monitoring in Kubernetes using Prometheus and Grafana**, you typically need:
+
+* Namespace
+* Prometheus ConfigMap
+* Prometheus Deployment
+* Prometheus Service
+* Grafana Deployment
+* Grafana Service
+
+Below is a **complete working Kubernetes setup**.
+
+---
+
+# 1️⃣ Create Monitoring Namespace
+
+```bash
+kubectl create namespace monitoring
+```
+
+---
+
+# 2️⃣ Prometheus Configuration (prometheus.yml)
+
+```yaml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'kubernetes-nodes'
+    static_configs:
+      - targets:
+        - 'node-exporter:9100'
+
+  - job_name: 'kubernetes-pods'
+    static_configs:
+      - targets:
+        - 'kube-state-metrics:8080'
+```
+
+---
+
+# 3️⃣ Prometheus ConfigMap
+
+`prometheus-config.yaml`
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+
+    scrape_configs:
+
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+```
+
+---
+
+# 4️⃣ Prometheus Deployment
+
+`prometheus-deployment.yaml`
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: prometheus
+
+  template:
+    metadata:
+      labels:
+        app: prometheus
+
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus
+
+        ports:
+        - containerPort: 9090
+
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/prometheus/
+
+      volumes:
+      - name: config-volume
+        configMap:
+          name: prometheus-config
+```
+
+---
+
+# 5️⃣ Prometheus Service
+
+`prometheus-service.yaml`
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+  namespace: monitoring
+
+spec:
+  selector:
+    app: prometheus
+
+  ports:
+    - port: 9090
+      targetPort: 9090
+
+  type: NodePort
+```
+
+---
+
+# 6️⃣ Grafana Deployment
+
+`grafana-deployment.yaml`
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: grafana
+
+  template:
+    metadata:
+      labels:
+        app: grafana
+
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana
+
+        ports:
+        - containerPort: 3000
+
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: admin
+
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: admin
+```
+
+---
+
+# 7️⃣ Grafana Service
+
+`grafana-service.yaml`
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  namespace: monitoring
+
+spec:
+  selector:
+    app: grafana
+
+  ports:
+    - port: 3000
+      targetPort: 3000
+
+  type: NodePort
+```
+
+---
+
+# 8️⃣ Deploy All Resources
+
+```bash
+kubectl apply -f prometheus-config.yaml
+kubectl apply -f prometheus-deployment.yaml
+kubectl apply -f prometheus-service.yaml
+
+kubectl apply -f grafana-deployment.yaml
+kubectl apply -f grafana-service.yaml
+```
+
+---
+
+# 9️⃣ Check Running Pods
+
+```bash
+kubectl get pods -n monitoring
+```
+
+---
+
+# 🔟 Access Applications
+
+Prometheus:
+
+```
+http://NODE-IP:NodePort
+```
+
+Grafana:
+
+```
+http://NODE-IP:NodePort
+```
+
+Default login:
+
+```
+username: admin
+password: admin
+```
+
+---
+
+# Monitoring Architecture
+
+```
+Kubernetes Cluster
+        │
+        ▼
+   Prometheus
+   (Collects Metrics)
+        │
+        ▼
+     Grafana
+ (Visualization Dashboard)
+```
+
+---
+
+✅ This setup monitors Kubernetes metrics using:
+
+* **Prometheus** – metrics collection
+* **Grafana** – visualization dashboards
+* **Kubernetes** – container orchestration
+
+---
+
+💡 If you want, I can also show you the **industry-standard setup using Helm (`kube-prometheus-stack`)**, which installs **Prometheus + Grafana + Alertmanager + Node Exporter automatically** in one command. It’s what most companies use. 🚀
