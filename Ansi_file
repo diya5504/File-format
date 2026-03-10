@@ -1,0 +1,234 @@
+Your playbook installs **Docker and Kubernetes packages**, but a **complete Ansible setup for Kubernetes** usually includes:
+
+* Inventory file
+* Playbook
+* Disable swap
+* Install container runtime
+* Install kubeadm, kubelet, kubectl
+* Initialize master node
+* Join worker nodes
+* Configure kubectl
+
+Below is a **complete working Ansible Kubernetes setup**.
+
+---
+
+# 1️⃣ Project Structure
+
+```
+ansible-k8s/
+│
+├── inventory
+├── install-k8s.yml
+├── master.yml
+└── worker.yml
+```
+
+---
+
+# 2️⃣ Inventory File
+
+`inventory`
+
+```ini
+[master]
+master-node ansible_host=192.168.1.10 ansible_user=ubuntu
+
+[workers]
+worker-node1 ansible_host=192.168.1.11 ansible_user=ubuntu
+worker-node2 ansible_host=192.168.1.12 ansible_user=ubuntu
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+```
+
+---
+
+# 3️⃣ Common Installation Playbook
+
+`install-k8s.yml`
+
+```yaml
+---
+- hosts: all
+  become: yes
+
+  tasks:
+
+  - name: Update apt packages
+    apt:
+      update_cache: yes
+
+  - name: Disable swap
+    command: swapoff -a
+
+  - name: Remove swap from fstab
+    replace:
+      path: /etc/fstab
+      regexp: '^.*swap.*$'
+      replace: ''
+
+  - name: Install required packages
+    apt:
+      name:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+      state: present
+
+  - name: Install Docker
+    apt:
+      name: docker.io
+      state: present
+
+  - name: Start Docker
+    service:
+      name: docker
+      state: started
+      enabled: yes
+
+  - name: Add Kubernetes GPG key
+    apt_key:
+      url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+      state: present
+
+  - name: Add Kubernetes repository
+    apt_repository:
+      repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+      state: present
+
+  - name: Install Kubernetes packages
+    apt:
+      name:
+        - kubelet
+        - kubeadm
+        - kubectl
+      state: present
+      update_cache: yes
+
+  - name: Hold Kubernetes packages
+    dpkg_selections:
+      name: "{{ item }}"
+      selection: hold
+    loop:
+      - kubelet
+      - kubeadm
+      - kubectl
+```
+
+---
+
+# 4️⃣ Master Node Playbook
+
+`master.yml`
+
+```yaml
+---
+- hosts: master
+  become: yes
+
+  tasks:
+
+  - name: Initialize Kubernetes Cluster
+    command: kubeadm init --pod-network-cidr=192.168.0.0/16
+    register: kubeadm_output
+
+  - name: Create .kube directory
+    file:
+      path: /home/ubuntu/.kube
+      state: directory
+      owner: ubuntu
+      group: ubuntu
+
+  - name: Copy admin.conf
+    copy:
+      src: /etc/kubernetes/admin.conf
+      dest: /home/ubuntu/.kube/config
+      remote_src: yes
+      owner: ubuntu
+      group: ubuntu
+
+  - name: Install Calico Network
+    command: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+    become_user: ubuntu
+
+  - name: Get join command
+    command: kubeadm token create --print-join-command
+    register: join_command
+
+  - name: Save join command
+    copy:
+      content: "{{ join_command.stdout }}"
+      dest: /tmp/join-command.sh
+```
+
+---
+
+# 5️⃣ Worker Node Playbook
+
+`worker.yml`
+
+```yaml
+---
+- hosts: workers
+  become: yes
+
+  tasks:
+
+  - name: Copy join command
+    fetch:
+      src: /tmp/join-command.sh
+      dest: /tmp/join-command.sh
+      flat: yes
+    delegate_to: "{{ groups['master'][0] }}"
+
+  - name: Join Kubernetes cluster
+    command: sh /tmp/join-command.sh
+```
+
+---
+
+# 6️⃣ Run Playbooks
+
+Execute in order:
+
+```bash
+ansible-playbook -i inventory install-k8s.yml
+
+ansible-playbook -i inventory master.yml
+
+ansible-playbook -i inventory worker.yml
+```
+
+---
+
+# ✅ Resulting Architecture
+
+```
+Ansible Control Node
+        │
+        ▼
+ ┌───────────────┐
+ │ Master Node   │
+ │ kube-apiserver│
+ │ etcd          │
+ └──────┬────────┘
+        │
+ ┌──────▼─────────┐
+ │ Worker Node 1  │
+ │ Pods           │
+ └──────┬─────────┘
+        │
+ ┌──────▼─────────┐
+ │ Worker Node 2  │
+ │ Pods           │
+ └────────────────┘
+```
+
+---
+
+✅ This is **good for DevOps interviews and real projects**.
+
+---
+
+If you want, I can also show you a **production-level Ansible Kubernetes setup with roles (roles/docker, roles/k8s-master, roles/k8s-worker)** which is the **standard structure used in companies**. It’s much cleaner and easier to maintain. 🚀
